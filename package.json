@@ -1,6 +1,6 @@
 {
   "name": "workbench-ecs",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "WorkBuddy MCP server for Aliyun ECS operations: list/find/exec/log/upload/download/diagnose/session (ported from dsh-workbench-ecs v0.9.0)",
   "type": "module",
   "main": "src/server.mjs",
