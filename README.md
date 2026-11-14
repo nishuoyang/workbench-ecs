@@ -79,6 +79,16 @@ npm test                 # 冒烟测试：握手 + 8 个工具清单校验
 
 然后在连接器管理页右上角"自定义连接器"里 **Trust** 该服务器。改动 `src/server.mjs` 后重启会话生效。
 
+## 发布（维护者）
+
+```bash
+git tag v1.0.1 && git push origin v1.0.1
+```
+
+打 tag 触发 `.github/workflows/release.yml`：测试与版本一致性校验 → `npm publish --provenance` → 确认版本真正上架 → 创建 GitHub Release。tag 必须与 `package.json` 的 `version` 一致，否则在第一步就被拦下。
+
+**npm 12 默认分阶段发布**：`npm publish` 之后版本可能先进暂存队列，registry 上只出现 `0.0.0-stage` 占位（描述为 "Temporary package placeholder for staged publishing"），真实的 `latest` 要等放行才指向新版本。工作流会轮询最多 6 分钟；仍未公开则失败，并提示用 `npm stage list` + `npm stage approve` 人工批准（需 2FA）。
+
 ## 手动测试（协议层）
 
 ```bash

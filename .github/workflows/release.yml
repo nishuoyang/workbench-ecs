@@ -80,6 +80,26 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
+      # npm 12 默认分阶段发布：publish 返回成功时版本可能仍在暂存队列，
+      # 需人工 2FA 批准才会公开。这一步确认真的上架，避免 CI 假绿。
+      - name: 等待版本真正上架
+        shell: bash
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 12); do
+            live="$(npm view "workbench-ecs@${VERSION}" version 2>/dev/null || true)"
+            if [ "$live" = "$VERSION" ]; then
+              echo "已上架: workbench-ecs@${VERSION}"
+              exit 0
+            fi
+            echo "第 ${i}/12 次: 尚未公开(可能进入暂存队列), 30s 后重试"
+            sleep 30
+          done
+          echo "::error::6 分钟内未公开。npm 12 默认分阶段发布，请人工批准: npm login && npm stage list && npm stage approve <stage-id>，或在 npmjs.com 的 Staged Packages 页面批准"
+          exit 1
+
   github-release:
     name: 创建 GitHub Release
     needs: [verify, publish-npm]
