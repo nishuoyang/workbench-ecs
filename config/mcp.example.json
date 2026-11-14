@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "workbench-ecs": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "E:\\AiProject\\workbench-ecs\\src\\server.mjs"
+      ],
+      "description": "阿里云 ECS 服务器操控 (dsh-workbench-ecs 移植): ecs_list/find/exec/log/upload/download/diagnose/session"
+    }
+  }
+}
