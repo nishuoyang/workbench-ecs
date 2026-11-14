@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: node ${{ matrix.node }} · ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: [18, 20, 22]
+        exclude:
+          # Windows 只跑最新 LTS，验证路径/换行差异即可
+          - os: windows-latest
+            node: 18
+          - os: windows-latest
+            node: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Node ${{ matrix.node }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: 语法检查
+        run: node --check src/server.mjs
+
+      - name: 冒烟测试（initialize + tools/list + 8 工具清单）
+        run: npm test
+
+  # 无需 npm install：零运行时依赖，冒烟测试直接跑 Node 内置模块
+  deps-check:
+    name: 依赖声明检查
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: 确认无运行时依赖
+        run: |
+          set -euo pipefail
+          node -e '
+            const p = require("./package.json");
+            const deps = Object.keys(p.dependencies || {});
+            const dev = Object.keys(p.devDependencies || {});
+            if (deps.length || dev.length) {
+              console.error("出现依赖声明:", deps, dev);
+              process.exit(1);
+            }
+            console.log("零依赖 ✓");
+          '
+      - name: 确认 node 版本约束
+        run: |
+          set -euo pipefail
+          node -e '
+            const p = require("./package.json");
+            if (!p.engines || !p.engines.node) {
+              console.error("缺少 engines.node");
+              process.exit(1);
+            }
+            console.log("engines.node =", p.engines.node);
+          '

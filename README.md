@@ -1,5 +1,7 @@
 # workbench-ecs
 
+[![CI](https://github.com/nishuoyang/workbench-ecs/actions/workflows/ci.yml/badge.svg)](https://github.com/nishuoyang/workbench-ecs/actions/workflows/ci.yml)
+
 把 **dsh-workbench-ecs**（DeepSeek Harness 的阿里云 ECS 插件，v0.9.0）移植为 WorkBuddy 的 MCP 服务器。
 
 - 本仓库路径: `E:\AiProject\workbench-ecs`（唯一有效来源）
