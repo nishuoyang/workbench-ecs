@@ -4,6 +4,7 @@
 // 用法: npm test   (或 node scripts/smoke.mjs)
 
 import { spawn } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -84,6 +85,15 @@ child.on('close', (code) => {
   const names = list.result.tools.map((t) => t.name);
   const missing = EXPECTED.filter((n) => !names.includes(n));
   const extra = names.filter((n) => !EXPECTED.includes(n));
+
+  // 服务器自报版本必须与 package.json 一致, 否则发版后客户端看到的版本会漂移
+  const pkgVersion = JSON.parse(readFileSync(join(here, '..', 'package.json'), 'utf8')).version;
+  if (init.result.serverInfo.version !== pkgVersion) {
+    console.error(
+      '[smoke] 版本不一致: serverInfo=' + init.result.serverInfo.version + ' package.json=' + pkgVersion,
+    );
+    process.exit(1);
+  }
 
   console.log('[smoke] 服务器: ' + init.result.serverInfo.name + ' v' + init.result.serverInfo.version);
   console.log('[smoke] 协议版本: ' + init.result.protocolVersion);

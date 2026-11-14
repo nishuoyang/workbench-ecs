@@ -16,13 +16,22 @@
 
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, statSync, mkdtempSync, rmSync, createReadStream } from 'node:fs';
+import { existsSync, statSync, mkdtempSync, rmSync, createReadStream, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, basename } from 'node:path';
 import { createInterface } from 'node:readline';
 
 const SERVER_NAME = 'workbench-ecs';
-const SERVER_VERSION = '1.0.0';
+// 版本号取自 package.json, 避免发版时忘记同步常量(initialize 的 serverInfo
+// 与启动日志都会用到)。standalone 拷贝没有 package.json 时回退为 0.0.0。
+const SERVER_VERSION = (() => {
+  try {
+    const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+    return typeof pkg.version === 'string' && pkg.version.length > 0 ? pkg.version : '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
+})();
 const REMOTE_TIMEOUT_EXIT_CODE = 124;
 const STDOUT_CAP_BYTES = 8 * 1024 * 1024;
 
