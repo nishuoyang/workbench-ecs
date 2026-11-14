@@ -1,0 +1,106 @@
+name: Release
+
+# 打 tag 即发布：git tag v1.0.0 && git push origin v1.0.0
+# 版本号必须与 package.json 的 version 一致，否则在 verify 阶段就拦下。
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write   # 创建 GitHub Release
+  id-token: write   # npm provenance（SLSA 来源证明）
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: 发布前校验
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: 冒烟测试
+        run: npm test
+
+      - name: tag 与 package.json 版本一致性
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME#v}"
+          pkg="$(node -p "require('./package.json').version")"
+          echo "tag=${GITHUB_REF_NAME}  package.json=${pkg}"
+          if [ "$tag" != "$pkg" ]; then
+            echo "::error::tag $tag 与 package.json version $pkg 不一致"
+            exit 1
+          fi
+          echo "version=$pkg" >> "$GITHUB_OUTPUT"
+
+      - name: 打包预检（只打印内容，不发布）
+        run: npm pack --dry-run
+
+  publish-npm:
+    name: 发布到 npm
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      # 无依赖项目不需要 npm ci；prepublishOnly 会再跑一次测试
+      - name: 检查 NPM_TOKEN
+        shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
+            echo "::error::缺少仓库 secret NPM_TOKEN，无法发布到 npm"
+            exit 1
+          fi
+
+      - name: npm publish
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  github-release:
+    name: 创建 GitHub Release
+    needs: [verify, publish-npm]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: gh release create
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "Release $GITHUB_REF_NAME 已存在，跳过"
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              --title "$GITHUB_REF_NAME" \
+              --generate-notes \
+              --verify-tag
+          fi
