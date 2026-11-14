@@ -100,22 +100,29 @@ function runWorkbench(argv, opts = {}) {
 const ANSI_RE = /\x1b\[[0-9;?]*[ -\/]*[@-~]|\x1b\][^\x07]*(\x07|\x1b\\)|\x1b[()][A-Za-z0-9]|\x1b[@-Z\\-_]/g;
 const CONTROL_RE = /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g;
 
-// 进度帧折叠: workbench 上传/下载会输出 "⠋ Preparing...\r⠙ Preparing...\rUpload complete..."
-// 这类同帧内用 \r 覆盖的画面。终端里 \r 把光标拉回行首、后写的内容覆盖前面的,
-// 因此每行只保留最后一个非空片段, 正好得到最后那帧的真实结果。
+// 进度帧识别 (逐字移植上游 common.js 的 PROGRESS_FRAME_RE):
+// 盲文点阵 spinner / "[###---] 50%" / "50% ███" 三类回车重绘帧
+const PROGRESS_FRAME_RE = /^\s*(?:[\u2800-\u28ff]|\[[#=.\- ]{3,}\]\s*\d{1,3}%|\d{1,3}%\s*[|\[▏▎▍▌▋▊▉█])/u;
+
+// 回车重绘行折叠 (上游 cleanOutput 同款语义): workbench upload/download 会把
+// "⠋ Preparing...\r⠙ Preparing...\rUpload complete: ..." 这类进度写进同一行,
+// 按 \r 切成片段后丢掉进度帧与空段, 其余按出现顺序各占一行。
+// 与"只保留最后一段"相比, 这样不会吞掉同帧内的多条真实消息。
 function collapseCarriageReturns(text) {
   if (text.indexOf('\r') === -1) return text;
-  return text
-    .split('\n')
-    .map((line) => {
-      if (line.indexOf('\r') === -1) return line;
-      const parts = line.split('\r');
-      for (let i = parts.length - 1; i >= 0; i -= 1) {
-        if (parts[i].trim().length > 0) return parts[i];
-      }
-      return '';
-    })
-    .join('\n');
+  const out = [];
+  for (const line of text.split('\n')) {
+    if (line.indexOf('\r') < 0) {
+      out.push(line);
+      continue;
+    }
+    for (const seg of line.split('\r')) {
+      if (seg.trim().length === 0) continue;
+      if (PROGRESS_FRAME_RE.test(seg)) continue;
+      out.push(seg);
+    }
+  }
+  return out.join('\n');
 }
 
 function cleanOutput(text, stripAnsiFlag = true) {
