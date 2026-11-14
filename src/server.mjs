@@ -100,10 +100,28 @@ function runWorkbench(argv, opts = {}) {
 const ANSI_RE = /\x1b\[[0-9;?]*[ -\/]*[@-~]|\x1b\][^\x07]*(\x07|\x1b\\)|\x1b[()][A-Za-z0-9]|\x1b[@-Z\\-_]/g;
 const CONTROL_RE = /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g;
 
+// 进度帧折叠: workbench 上传/下载会输出 "⠋ Preparing...\r⠙ Preparing...\rUpload complete..."
+// 这类同帧内用 \r 覆盖的画面。终端里 \r 把光标拉回行首、后写的内容覆盖前面的,
+// 因此每行只保留最后一个非空片段, 正好得到最后那帧的真实结果。
+function collapseCarriageReturns(text) {
+  if (text.indexOf('\r') === -1) return text;
+  return text
+    .split('\n')
+    .map((line) => {
+      if (line.indexOf('\r') === -1) return line;
+      const parts = line.split('\r');
+      for (let i = parts.length - 1; i >= 0; i -= 1) {
+        if (parts[i].trim().length > 0) return parts[i];
+      }
+      return '';
+    })
+    .join('\n');
+}
+
 function cleanOutput(text, stripAnsiFlag = true) {
   const raw = String(text ?? '').replace(/\r\n/g, '\n');
   if (stripAnsiFlag !== true) return raw;
-  return raw.replace(ANSI_RE, '').replace(CONTROL_RE, '');
+  return collapseCarriageReturns(raw.replace(ANSI_RE, '').replace(CONTROL_RE, ''));
 }
 
 function asCliError(data) {
@@ -794,8 +812,23 @@ async function toolEcsSession(args) {
     if (argv === null) throw new Error('ecs_session: close 需要 session_id 或 all=true');
   } else throw new Error("ecs_session: action 必须是 'list' 或 'close'");
   const r = await runWorkbench(argv);
-  const text = cleanOutput(r.stdout.trim().length > 0 ? r.stdout : r.stderr, true);
-  return { text: text.slice(0, 20000), json: parseCliErrorJson(r.stdout.trim().length > 0 ? r.stdout : r.stderr) ?? { raw: text.slice(0, 2000) } };
+  const raw = r.stdout.trim().length > 0 ? r.stdout : r.stderr;
+  const text = cleanOutput(raw, true);
+  const parsed = parseCliErrorJson(raw);
+
+  // workbench session list 在没有活动会话时直接返回 null, 归一成空数组,
+  // 否则调用方拿到的是字面量 "null", 既不是列表也无法判断条数。
+  if (action === 'list') {
+    const sessions = Array.isArray(parsed)
+      ? parsed
+      : Array.isArray(parsed?.sessions) ? parsed.sessions : [];
+    return {
+      text: sessions.length === 0 ? '没有活动的 Workbench 会话' : text.slice(0, 20000),
+      json: { sessions, count: sessions.length },
+    };
+  }
+
+  return { text: text.slice(0, 20000), json: parsed ?? { raw: text.slice(0, 2000) } };
 }
 
 // MCP 工具清单 (前 4 个)
